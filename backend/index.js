@@ -1,21 +1,16 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import pg from "pg";
+import pool from "./config/db.js";
+import authRoutes from "./routes/auth.route.js"
+
 
 dotenv.config();
 
 
-const db=new pg.Client({
-    user:process.env.DB_USER,
-    host:process.env.DB_HOST,
-    port:process.env.DB_PORT,
-    database:process.env.DB_NAME,
-    password:process.env.DB_PASSWORD
-});
-
-
-db.connect();
+pool.connect()
+.then(() => console.log('PostgreSQL connected'))
+.catch((err) => console.log('DB connection error:', err.message))
 
 
 const app=express();
@@ -35,18 +30,11 @@ app.use(cors({
 
 app.use(express.json());
 
-db.query("SELECT NOW()",(err,res)=>{
-    if(err){
-        console.error("database is connected failure",err.message)
-    }
-    else{
-        console.log("database is connected");
-        console.log("server time",res.rows[0]);
-    }
 
-});
 
 
 app.listen(port,()=>{
     console.log(`app run in ${port}`)
 })
+
+app.use("/api/auth",authRoutes)
