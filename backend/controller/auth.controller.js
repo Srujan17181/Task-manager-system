@@ -1,12 +1,14 @@
 import pool from "../config/db.js"
 import bcryptjs from "bcryptjs"
-export const signup = async(req,res)=> {
+import { errorHandler } from "../utils/error.js"
+
+export const signup = async(req,res,next)=> {
     try {
         
     const { name,email,password,profileImageUrl,adminJoinCode } = req.body
 
     if(!name || !email || !password || name==="" || email==="" || password===""){
-        return res.status(400).json({message:"All feilds are required"});
+        return next(errorHandler(400,"All feilds are required"))
     }
 
 
@@ -15,7 +17,7 @@ export const signup = async(req,res)=> {
         'SELECT * FROM users WHERE email=$1',[email])
 
     if(isUserAlreadyExist.rows[0]){
-        return res.status(400).json({success:false,message:"User already Exist"})
+        return next(errorHandler(400,"User already Exist"))
     }
 
     // check for a role 
@@ -43,7 +45,7 @@ export const signup = async(req,res)=> {
     res.status(201).json("sign-up successfully")
     } 
     catch (error) {
-        res.status(500).json({message:error.message})
+        next(error.message)
         
     }
 
