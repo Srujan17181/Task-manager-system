@@ -97,3 +97,22 @@ export const signin = async(req,res,next)=> {
     }
 
 }
+
+export const userProfile = async(req,res,next)=>{
+    try {
+        
+        const validUser=await pool.query(`SELECT * FROM users WHERE id=$1`,[req.user.id])
+
+        const user=validUser.rows[0]
+        if(!user){
+            return next(errorHandler(404,"User Not Found"))
+        }
+
+        const {password:pass,...rest}=user
+
+        res.status(200).json(rest)
+
+    } catch (error) {
+        next(error)
+    }
+}
