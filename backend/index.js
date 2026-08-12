@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import pool from "./config/db.js";
 import authRoutes from "./routes/auth.route.js"
-
+import cookieParser from "cookie-parser";
 
 dotenv.config();
 
@@ -29,6 +29,8 @@ app.use(cors({
 // middleware to handle body req
 
 app.use(express.json());
+
+app.use(cookieParser())
 
 app.listen(port,()=>{
     console.log(`app run in ${port}`)

@@ -1,6 +1,7 @@
 import pool from "../config/db.js"
 import bcryptjs from "bcryptjs"
 import { errorHandler } from "../utils/error.js"
+import jwt from 'jsonwebtoken'
 
 export const signup = async(req,res,next)=> {
     try {
@@ -47,6 +48,52 @@ export const signup = async(req,res,next)=> {
     catch (error) {
         next(error.message)
         
+    }
+
+}
+
+
+export const signin = async(req,res,next)=> {
+    try {
+        const {email,password}=req.body
+
+        // check for the email and password which should not be empty
+
+        if(!email||!password||email===""||password===""){
+            return next(errorHandler(400,"email and password required"))
+        }
+
+        // check for the vaildemail
+        
+        const vaildEmail=await pool.query(`SELECT * FROM users WHERE email=$1`,[email]);
+        // got user
+
+        const user=vaildEmail.rows[0]
+        if(!user){
+            return next(errorHandler(400,"User not Found"))
+        }
+
+        // compare password 
+        console.log(user)
+        const ismatch=await bcryptjs.compareSync(password,user.password);
+
+        if(!ismatch){
+            return next(errorHandler(400,"incorrect Password "))
+        }
+
+        const token=jwt.sign(
+            {id:user.id},
+            process.env.JWT_SECRET
+        )
+
+        const {password:pass,...rest}=user
+        
+        res.status(200).cookie("access_token",token,{httpOnly:true}).json(rest)
+        
+
+    } catch (error) {
+        
+        next(error)
     }
 
 }
