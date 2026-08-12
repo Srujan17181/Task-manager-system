@@ -74,7 +74,7 @@ export const signin = async(req,res,next)=> {
         }
 
         // compare password 
-        console.log(user)
+        
         const ismatch=await bcryptjs.compareSync(password,user.password);
 
         if(!ismatch){
