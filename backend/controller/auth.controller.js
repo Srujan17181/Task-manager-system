@@ -116,3 +116,28 @@ export const userProfile = async(req,res,next)=>{
         next(error)
     }
 }
+
+export const updateUserProfile=async (req,res,next)=>{
+    try {
+        const user=await pool.query(`SELECT * FROM users WHERE id=$1`,[req.user.id])
+        const currentUser=user.rows[0]
+        if(!currentUser){
+            return next(errorHandler(404,"User Not Found"))
+        }
+
+        currentUser.name=req.body.name ||  currentUser.name
+        currentUser.email=req.body.email || currentUser.email
+
+        if(req.body.password){
+            currentUser.password=bcryptjs.hashSync(req.body.password,10);
+        }
+        
+        const{password:pass,...rest}=currentUser
+
+        res.status(200).json(rest)
+    } catch (error) {
+        next(error)
+    }
+   
+    
+}
