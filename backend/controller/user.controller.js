@@ -38,3 +38,18 @@ export const getUsers= async (req,res,next)=>{
         next(error)
     }
 }
+
+export const getUserById=async (req,res,next)=>{
+    try {
+        const user=await pool.query(`SELECT id,name,email,role FROM users
+             WHERE id=$1`,[req.params.id])
+        const myUser=user.rows
+        if(!myUser){
+            return next(errorHandler(400,"user not found"))
+        }
+
+        res.status(200).json(myUser)
+    } catch (error) {
+        next(error)
+    }
+}
