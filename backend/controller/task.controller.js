@@ -151,3 +151,320 @@ export const createTask=async (req,res,next)=>{
     }
 };
 
+export const getTasks = async (req, res, next) => {
+    try {
+        const { status } = req.query;
+        // 1. Get tasks
+        let taskQuery;
+        let taskValues;
+
+        if (req.user.role === "admin") {
+
+            if (status) {
+                taskQuery = `
+                    SELECT 
+                        t.*,
+                        COALESCE(
+                            json_agg(
+                                DISTINCT jsonb_build_object(
+                                    'id', u.id,
+                                    'name', u.name,
+                                    'email', u.email,
+                                    'profileImageUrl', u.profileimgurl
+                                )
+                            ) FILTER (WHERE u.id IS NOT NULL),
+                            '[]'
+                        ) AS assigned_to
+                    FROM tasks t
+                    LEFT JOIN task_assignees ta
+                        ON t.id = ta.task_id
+                    LEFT JOIN users u
+                        ON ta.user_id = u.id
+                    WHERE t.status = $1
+                    GROUP BY t.id
+                    ORDER BY t.id DESC
+                `;
+
+                taskValues = [status];
+
+            } else {
+
+                taskQuery = `
+                    SELECT 
+                        t.*,
+                        COALESCE(
+                            json_agg(
+                                DISTINCT jsonb_build_object(
+                                    'id', u.id,
+                                    'name', u.name,
+                                    'email', u.email,
+                                    'profileImageUrl', u.profileimgurl
+                                )
+                            ) FILTER (WHERE u.id IS NOT NULL),
+                            '[]'
+                        ) AS assigned_to
+                    FROM tasks t
+                    LEFT JOIN task_assignees ta
+                        ON t.id = ta.task_id
+                    LEFT JOIN users u
+                        ON ta.user_id = u.id
+                    GROUP BY t.id
+                    ORDER BY t.id DESC
+                `;
+
+                taskValues = [];
+            }
+
+        } else {
+
+            if (status) {
+
+                taskQuery = `
+                    SELECT 
+                        t.*,
+                        COALESCE(
+                            json_agg(
+                                DISTINCT jsonb_build_object(
+                                    'id', u.id,
+                                    'name', u.name,
+                                    'email', u.email,
+                                    'profileImageUrl', u.profileimgurl
+                                )
+                            ) FILTER (WHERE u.id IS NOT NULL),
+                            '[]'
+                        ) AS assigned_to
+                    FROM tasks t
+                    INNER JOIN task_assignees ta
+                        ON t.id = ta.task_id
+                    LEFT JOIN users u
+                        ON ta.user_id = u.id
+                    WHERE ta.user_id = $1
+                    AND t.status = $2
+                    GROUP BY t.id
+                    ORDER BY t.id DESC
+                `;
+
+                taskValues = [req.user.id, status];
+
+            } else {
+
+                taskQuery = `
+                    SELECT 
+                        t.*,
+                        COALESCE(
+                            json_agg(
+                                DISTINCT jsonb_build_object(
+                                    'id', u.id,
+                                    'name', u.name,
+                                    'email', u.email,
+                                    'profileImageUrl', u.profileimgurl
+                                )
+                            ) FILTER (WHERE u.id IS NOT NULL),
+                            '[]'
+                        ) AS assigned_to
+                    FROM tasks t
+                    INNER JOIN task_assignees ta
+                        ON t.id = ta.task_id
+                    LEFT JOIN users u
+                        ON ta.user_id = u.id
+                    WHERE ta.user_id = $1
+                    GROUP BY t.id
+                    ORDER BY t.id DESC
+                `;
+
+                taskValues = [req.user.id];
+            }
+        }
+
+        const taskResult = await pool.query(
+            taskQuery,
+            taskValues
+        );
+
+        let tasks = taskResult.rows;
+
+        // 2. Get completed todo count
+
+        tasks = await Promise.all(
+            tasks.map(async (task) => {
+
+                const todoResult = await pool.query(
+                    `
+                    SELECT COUNT(*) AS completed_count
+                    FROM task_todos
+                    WHERE task_id = $1
+                    AND completed = true
+                    `,
+                    [task.id]
+                );
+
+                return {
+                    ...task,
+                    completedCount: Number(
+                        todoResult.rows[0].completed_count
+                    )
+                };
+            })
+        );
+
+        // 3. All tasks count
+
+        let allTasksQuery;
+        let allTasksValues;
+
+        if (req.user.role === "admin") {
+
+            allTasksQuery = `
+                SELECT COUNT(*) AS count
+                FROM tasks
+            `;
+
+            allTasksValues = [];
+
+        } else {
+
+            allTasksQuery = `
+                SELECT COUNT(DISTINCT t.id) AS count
+                FROM tasks t
+                INNER JOIN task_assignees ta
+                    ON t.id = ta.task_id
+                WHERE ta.user_id = $1
+            `;
+
+            allTasksValues = [req.user.id];
+        }
+
+        const allTasksResult = await pool.query(
+            allTasksQuery,
+            allTasksValues
+        );
+
+        // 4. Pending tasks
+
+        let pendingQuery;
+        let pendingValues;
+
+        if (req.user.role === "admin") {
+
+            pendingQuery = `
+                SELECT COUNT(*) AS count
+                FROM tasks
+                WHERE status = 'Pending'
+            `;
+
+            pendingValues = [];
+
+        } else {
+
+            pendingQuery = `
+                SELECT COUNT(DISTINCT t.id) AS count
+                FROM tasks t
+                INNER JOIN task_assignees ta
+                    ON t.id = ta.task_id
+                WHERE ta.user_id = $1
+                AND t.status = 'Pending'
+            `;
+
+            pendingValues = [req.user.id];
+        }
+
+        const pendingResult = await pool.query(
+            pendingQuery,
+            pendingValues
+        );
+
+        // 5. In Progress tasks
+
+        let inProgressQuery;
+        let inProgressValues;
+
+        if (req.user.role === "admin") {
+
+            inProgressQuery = `
+                SELECT COUNT(*) AS count
+                FROM tasks
+                WHERE status = 'In Progress'
+            `;
+
+            inProgressValues = [];
+
+        } else {
+
+            inProgressQuery = `
+                SELECT COUNT(DISTINCT t.id) AS count
+                FROM tasks t
+                INNER JOIN task_assignees ta
+                    ON t.id = ta.task_id
+                WHERE ta.user_id = $1
+                AND t.status = 'In Progress'
+            `;
+
+            inProgressValues = [req.user.id];
+        }
+
+        const inProgressResult = await pool.query(
+            inProgressQuery,
+            inProgressValues
+        );
+        // 6. Completed tasks
+
+        let completedQuery;
+        let completedValues;
+
+        if (req.user.role === "admin") {
+
+            completedQuery = `
+                SELECT COUNT(*) AS count
+                FROM tasks
+                WHERE status = 'Completed'
+            `;
+
+            completedValues = [];
+
+        } else {
+
+            completedQuery = `
+                SELECT COUNT(DISTINCT t.id) AS count
+                FROM tasks t
+                INNER JOIN task_assignees ta
+                    ON t.id = ta.task_id
+                WHERE ta.user_id = $1
+                AND t.status = 'Completed'
+            `;
+
+            completedValues = [req.user.id];
+        }
+
+        const completedResult = await pool.query(
+            completedQuery,
+            completedValues
+        );
+
+        // 7. Response
+
+        res.status(200).json({
+            tasks,
+
+            statusSummary: {
+                all: Number(
+                    allTasksResult.rows[0].count
+                ),
+
+                pendingTasks: Number(
+                    pendingResult.rows[0].count
+                ),
+
+                inProgressTasks: Number(
+                    inProgressResult.rows[0].count
+                ),
+
+                completedTasks: Number(
+                    completedResult.rows[0].count
+                )
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
