@@ -6,7 +6,27 @@ export const verifyToken =(req,res,next)=>{
     const token=req.cookies.access_token
 
     if(!token){
-        return next(errorHandler(401,"Unauthorizated"))
+        return next(errorHandler(401,"Unauthorized"))
+    }
+
+    jwt.verify(token,process.env.JWT_SECRET,(err,user)=>{
+        if(err){
+            return next(errorHandler(403,"Unauthorized"))
+        }
+
+        req.user=user
+        console.log(req.user)
+
+        next()
+    })
+}
+
+export const adminOnly=(req,res,next)=>{
+
+     const token=req.cookies.access_token
+
+    if(!token){
+        return next(errorHandler(401,"Unauthorized"))
     }
 
     jwt.verify(token,process.env.JWT_SECRET,(err,user)=>{
@@ -16,15 +36,11 @@ export const verifyToken =(req,res,next)=>{
 
         req.user=user
 
+        if(req.user && req.user.role==="admin"){
         next()
+        }
+        else{
+            return next(errorHandler(403,"Access Denied Admin Only!"))
+        }    
     })
-}
-
-export const adminOnly=(req,res,next)=>{
-    if(req.user && req.user.role==="admin"){
-        next()
-    }
-    else{
-        return next(errorHandler(403,"Access Denied Admin Only!"))
-    }
 }

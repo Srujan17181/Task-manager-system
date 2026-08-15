@@ -82,7 +82,7 @@ export const signin = async(req,res,next)=> {
         }
 
         const token=jwt.sign(
-            {id:user.id},
+            {id:user.id,role:user.role},
             process.env.JWT_SECRET
         )
 
@@ -139,5 +139,22 @@ export const updateUserProfile=async (req,res,next)=>{
         next(error)
     }
    
+    
+}
+
+export const uploadImage= async (req,res,next)=>{
+
+    try {
+        if(!req.file){
+            return next(errorHandler(404,"file not uploaded"))
+        }
+
+        const uploadImgUrl=`${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+
+        res.status(200).json(uploadImgUrl)
+    } catch (error) {
+        next(error)
+    }
+
     
 }
