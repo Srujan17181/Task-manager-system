@@ -9,4 +9,6 @@ router.get("/get-user",verifyToken,adminOnly,getUsers)
 
 router.get('/:id',verifyToken,getUserById)
 
+
+
 export default router
