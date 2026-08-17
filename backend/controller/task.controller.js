@@ -821,3 +821,83 @@ export const deleteTask=async(req,res,next)=>{
         next(error);
     }
 };
+
+export const updateTaskStatus=async(req,res,next)=>{
+  try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+
+        // 1. Check if task exists
+        const taskResult = await pool.query(
+            `SELECT *
+             FROM tasks
+             WHERE id = $1`,
+            [id]
+        );
+
+        if (taskResult.rows.length === 0) {
+            return next(errorHandler(404, "Task not found!"));
+        }
+
+
+        const task = taskResult.rows[0];
+
+
+        // 2. Check if user is assigned to this task
+        const assignedResult = await pool.query(
+            `SELECT 1
+             FROM task_assignees
+             WHERE task_id = $1
+             AND user_id = $2`,
+            [id, req.user.id]
+        );
+
+
+        const isAssigned = assignedResult.rows.length > 0;
+
+
+        // 3. Check authorization
+        if (!isAssigned && req.user.role !== "admin") {
+            return next(errorHandler(403, "Unauthorized"));
+        }
+
+
+        // 4. Keep old status if no new status is provided
+        const newStatus = status || task.status;
+
+
+        // 5. Update task status
+        const updatedTaskResult = await pool.query(
+            `UPDATE tasks
+             SET
+                status = $1,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`,
+            [newStatus, id]
+        );
+
+
+        // 6. If completed, mark all todos as completed
+        if (newStatus === "Completed") {
+
+            await pool.query(
+                `UPDATE task_todos
+                 SET completed = true
+                 WHERE task_id = $1`,
+                [id]
+            );
+        }
+
+
+        // 7. Return response
+        res.status(200).json({
+            message: "Task status updated",
+            task: updatedTaskResult.rows[0]
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
