@@ -754,3 +754,70 @@ export const updateTask=async(req,res,next)=>{
     }
 
 };
+
+export const deleteTask=async(req,res,next)=>{
+    try {
+        const { id } = req.params;
+
+        // 1. Check if task exists
+        const taskResult = await pool.query(
+            `SELECT id
+             FROM tasks
+             WHERE id = $1`,
+            [id]
+        );
+
+        if (taskResult.rows.length === 0) {
+            return next(errorHandler(404, "Task not found!"));
+        }
+
+
+        // 2. Delete assigned users
+        await pool.query(
+            `DELETE FROM task_assignees
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 3. Delete attachments
+        await pool.query(
+            `DELETE FROM task_attachments
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 4. Delete creator relationship
+        await pool.query(
+            `DELETE FROM task_creators
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 5. Delete todos
+        await pool.query(
+            `DELETE FROM task_todos
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 6. Delete the task
+        await pool.query(
+            `DELETE FROM tasks
+             WHERE id = $1`,
+            [id]
+        );
+
+
+        // 7. Send response
+        res.status(200).json({
+            message: "Task deleted successfully!"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
