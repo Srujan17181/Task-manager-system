@@ -468,3 +468,48 @@ export const getTasks = async (req, res, next) => {
         next(error);
     }
 };
+
+export const getTaskById=async(req,res,next)=>{
+    try {
+    const { id } = req.params;
+
+    const taskResult = await pool.query(
+        `SELECT
+            t.*,
+
+            COALESCE(
+                JSON_AGG(
+                    JSON_BUILD_OBJECT(
+                        'id', u.id,
+                        'name', u.name,
+                        'email', u.email,
+                        'profileImageUrl', u.profileimgurl
+                    )
+                ) FILTER (WHERE u.id IS NOT NULL),
+                '[]'
+            ) AS "assignedTo"
+
+         FROM tasks t
+
+         LEFT JOIN task_assignees ta
+            ON t.id = ta.task_id
+
+         LEFT JOIN users u
+            ON ta.user_id = u.id
+
+         WHERE t.id = $1
+
+         GROUP BY t.id`,
+        [id]
+    );
+
+    if (taskResult.rows.length === 0) {
+        return next(errorHandler(404, "Task not found!"));
+    }
+
+    res.status(200).json(taskResult.rows[0]);
+
+} catch (error) {
+    next(error);
+}
+};
