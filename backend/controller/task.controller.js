@@ -513,3 +513,244 @@ export const getTaskById=async(req,res,next)=>{
     next(error);
 }
 };
+
+export const updateTask=async(req,res,next)=>{
+     try {
+        const { id } = req.params;
+
+        const {
+            title,
+            description,
+            priority,
+            duedate,
+            todoChecklist,
+            attachments,
+            assignedTo
+        } = req.body;
+
+
+        // 1. Check if task exists
+
+        const taskResult = await pool.query(
+            `SELECT *
+             FROM tasks
+             WHERE id = $1`,
+            [id]
+        );
+
+        if (taskResult.rows.length === 0) {
+            return next(errorHandler(404, "Task not found!"));
+        }
+
+
+        const task = taskResult.rows[0];
+
+
+        // 2. Update task
+
+        const updatedTaskResult = await pool.query(
+            `UPDATE tasks
+             SET
+                title = $1,
+                description = $2,
+                priority = $3,
+                duedate = $4,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $5
+             RETURNING *`,
+            [
+                title ?? task.title,
+                description ?? task.description,
+                priority ?? task.priority,
+                duedate ?? task.duedate,
+                id
+            ]
+        );
+
+
+        // 3. Update assigned users
+
+        if (assignedTo !== undefined) {
+
+            if (!Array.isArray(assignedTo)) {
+                return next(
+                    errorHandler(
+                        400,
+                        "assignedTo must be an array of user IDs"
+                    )
+                );
+            }
+
+
+            // Remove old assignments
+
+            await pool.query(
+                `DELETE FROM task_assignees
+                 WHERE task_id = $1`,
+                [id]
+            );
+
+
+            // Add new assignments
+
+            for (const userId of assignedTo) {
+
+                await pool.query(
+                    `INSERT INTO task_assignees
+                        (task_id, user_id)
+                     VALUES ($1, $2)`,
+                    [id, userId]
+                );
+            }
+        }
+
+
+        // 4. Update todos
+
+        if (todoChecklist !== undefined) {
+
+            if (!Array.isArray(todoChecklist)) {
+                return next(
+                    errorHandler(
+                        400,
+                        "todoChecklist must be an array"
+                    )
+                );
+            }
+
+
+            // Delete old todos
+
+            await pool.query(
+                `DELETE FROM task_todos
+                 WHERE task_id = $1`,
+                [id]
+            );
+
+
+            // Insert new todos
+
+            for (const todo of todoChecklist) {
+
+                await pool.query(
+                    `INSERT INTO task_todos
+                        (task_id, text, completed)
+                     VALUES ($1, $2, $3)`,
+                    [
+                        id,
+                        todo.text,
+                        todo.completed ?? false
+                    ]
+                );
+            }
+        }
+
+
+        // 5. Update attachments
+
+        if (attachments !== undefined) {
+
+            if (!Array.isArray(attachments)) {
+                return next(
+                    errorHandler(
+                        400,
+                        "attachments must be an array"
+                    )
+                );
+            }
+
+
+            // Delete old attachments
+
+            await pool.query(
+                `DELETE FROM task_attachments
+                 WHERE task_id = $1`,
+                [id]
+            );
+
+
+            // Insert new attachments
+
+            for (const fileUrl of attachments) {
+
+                await pool.query(
+                    `INSERT INTO task_attachments
+                        (task_id, file_url)
+                     VALUES ($1, $2)`,
+                    [id, fileUrl]
+                );
+            }
+        }
+
+
+        // 6. Get assigned users
+
+        const assignedUsersResult = await pool.query(
+            `SELECT
+                u.id,
+                u.name,
+                u.email,
+                u.profileimgurl
+
+             FROM task_assignees ta
+
+             JOIN users u
+                ON ta.user_id = u.id
+
+             WHERE ta.task_id = $1`,
+            [id]
+        );
+
+
+        // 7. Get todos
+
+        const todosResult = await pool.query(
+            `SELECT
+                id,
+                text,
+                completed
+
+             FROM task_todos
+
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 8. Get attachments
+
+        const attachmentsResult = await pool.query(
+            `SELECT
+                id,
+                file_url
+
+             FROM task_attachments
+
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 9. Final response
+
+        const updatedTask = {
+            ...updatedTaskResult.rows[0],
+
+            assignedTo: assignedUsersResult.rows,
+
+            todoChecklist: todosResult.rows,
+
+            attachments: attachmentsResult.rows
+        };
+
+
+        res.status(200).json({
+            updatedTask,
+            message: "Task updated successfully!"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+
+};
