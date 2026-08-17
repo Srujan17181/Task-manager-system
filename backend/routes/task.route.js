@@ -1,6 +1,6 @@
 import express from 'express'
 import { adminOnly, verifyToken } from '../utils/verifyToken.js';
-import { createTask, deleteTask, getDashboardData, getTaskById, getTasks, updateTask, updateTaskChecklist, updateTaskStatus } from '../controller/task.controller.js';
+import { createTask, deleteTask, getDashboardData, getTaskById, getTasks, getUserDashboardData, updateTask, updateTaskChecklist, updateTaskStatus } from '../controller/task.controller.js';
 
 
 
@@ -11,6 +11,8 @@ router.post('/create',verifyToken,adminOnly,createTask)
 router.get('/',verifyToken,getTasks)
 
 router.get('/dashboard-data',verifyToken,adminOnly,getDashboardData)
+
+router.get('/user-dashboard-data',verifyToken,getUserDashboardData)
 
 router.get('/:id',verifyToken,getTaskById)
 

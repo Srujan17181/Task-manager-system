@@ -1216,3 +1216,183 @@ export const getDashboardData=async(req,res,next)=>{
     }
 
 };
+
+export const getUserDashboardData = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+
+
+        // 1. Total tasks assigned to user
+
+        const totalTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1`,
+            [userId]
+        );
+
+        const totalTasks = Number(
+            totalTasksResult.rows[0].count
+        );
+
+
+        // 2. Pending tasks
+
+        const pendingTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             AND t.status = $2`,
+            [userId, "Pending"]
+        );
+
+        const pendingTasks = Number(
+            pendingTasksResult.rows[0].count
+        );
+
+
+        // 3. Completed tasks
+
+        const completedTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             AND t.status = $2`,
+            [userId, "Completed"]
+        );
+
+        const completedTasks = Number(
+            completedTasksResult.rows[0].count
+        );
+
+
+        // 4. Overdue tasks
+
+        const overdueTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             AND t.status != $2
+             AND t.duedate < CURRENT_TIMESTAMP`,
+            [userId, "Completed"]
+        );
+
+        const overdueTasks = Number(
+            overdueTasksResult.rows[0].count
+        );
+
+
+        // 5. Task distribution by status
+
+        const taskDistributionResult = await pool.query(
+            `SELECT
+                t.status,
+                COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             GROUP BY t.status`,
+            [userId]
+        );
+
+
+        const taskDistribution = {
+            Pending: 0,
+            InProgress: 0,
+            Completed: 0,
+            All: totalTasks
+        };
+
+
+        taskDistributionResult.rows.forEach((item) => {
+
+            const key = item.status.replace(/\s+/g, "");
+
+            taskDistribution[key] = Number(item.count);
+
+        });
+
+
+        // 6. Task distribution by priority
+
+        const taskPriorityResult = await pool.query(
+            `SELECT
+                t.priority,
+                COUNT(*) AS count
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             GROUP BY t.priority`,
+            [userId]
+        );
+
+
+        const taskPriorityLevel = {
+            Low: 0,
+            Medium: 0,
+            High: 0
+        };
+
+
+        taskPriorityResult.rows.forEach((item) => {
+
+            taskPriorityLevel[item.priority] =
+                Number(item.count);
+
+        });
+
+
+        // 7. Recent 10 tasks
+
+        const recentTasksResult = await pool.query(
+            `SELECT
+                t.id,
+                t.title,
+                t.status,
+                t.priority,
+                t.duedate,
+                t.created_at
+             FROM tasks t
+             INNER JOIN task_assignees ta
+                ON t.id = ta.task_id
+             WHERE ta.user_id = $1
+             ORDER BY t.created_at DESC
+             LIMIT 10`,
+            [userId]
+        );
+
+
+        // 8. Response
+
+        res.status(200).json({
+
+            statistics: {
+                totalTasks,
+                pendingTasks,
+                completedTasks,
+                overdueTasks
+            },
+
+            charts: {
+                taskDistribution,
+                taskPriorityLevel
+            },
+
+            recentTasks: recentTasksResult.rows
+
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
