@@ -827,7 +827,6 @@ export const updateTaskStatus=async(req,res,next)=>{
         const { id } = req.params;
         const { status } = req.body;
 
-
         // 1. Check if task exists
         const taskResult = await pool.query(
             `SELECT *
