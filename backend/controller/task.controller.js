@@ -900,3 +900,319 @@ export const updateTaskStatus=async(req,res,next)=>{
         next(error);
     }
 };
+
+export const updateTaskChecklist=async(req,res,next)=>{
+        try {
+        const { todoChecklist } = req.body;
+        const { id } = req.params;
+
+
+        // 1. Validate checklist
+        if (!Array.isArray(todoChecklist)) {
+            return next(
+                errorHandler(400, "todoChecklist must be an array")
+            );
+        }
+
+
+        // 2. Check if task exists
+        const taskResult = await pool.query(
+            `SELECT *
+             FROM tasks
+             WHERE id = $1`,
+            [id]
+        );
+
+        if (taskResult.rows.length === 0) {
+            return next(
+                errorHandler(404, "Task not found!")
+            );
+        }
+
+
+        // 3. Check if user is assigned to task
+        const assignedResult = await pool.query(
+            `SELECT 1
+             FROM task_assignees
+             WHERE task_id = $1
+             AND user_id = $2`,
+            [id, req.user.id]
+        );
+
+        const isAssigned = assignedResult.rows.length > 0;
+
+
+        // 4. Authorization
+        if (!isAssigned && req.user.role !== "admin") {
+            return next(
+                errorHandler(
+                    403,
+                    "Not authorized to update checklist"
+                )
+            );
+        }
+
+
+        // 5. Delete old checklist
+        await pool.query(
+            `DELETE FROM task_todos
+             WHERE task_id = $1`,
+            [id]
+        );
+
+
+        // 6. Insert new checklist
+        for (const item of todoChecklist) {
+
+            await pool.query(
+                `INSERT INTO task_todos
+                    (task_id, text, completed)
+                 VALUES ($1, $2, $3)`,
+                [
+                    id,
+                    item.text,
+                    item.completed ?? false
+                ]
+            );
+        }
+
+
+        // 7. Calculate progress
+        const completedCount = todoChecklist.filter(
+            (item) => item.completed === true
+        ).length;
+
+        const totalItems = todoChecklist.length;
+
+        const progress =
+            totalItems > 0
+                ? Math.round(
+                    (completedCount / totalItems) * 100
+                )
+                : 0;
+
+
+        // 8. Determine status
+        let status;
+
+        if (progress === 100) {
+            status = "Completed";
+        } else if (progress > 0) {
+            status = "In Progress";
+        } else {
+            status = "Pending";
+        }
+
+
+        // 9. Update task progress and status
+        const updatedTaskResult = await pool.query(
+            `UPDATE tasks
+             SET
+                progress = $1,
+                status = $2,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $3
+             RETURNING *`,
+            [progress, status, id]
+        );
+
+
+        // 10. Get updated checklist
+        const todosResult = await pool.query(
+            `SELECT
+                id,
+                task_id,
+                text,
+                completed
+             
+             FROM task_todos
+             WHERE task_id = $1
+             ORDER BY id`,
+            [id]
+        );
+
+
+        // 11. Get assigned users
+        const assignedUsersResult = await pool.query(
+            `SELECT
+                u.id,
+                u.name,
+                u.email,
+                u.profileimgurl
+
+             FROM task_assignees ta
+
+             JOIN users u
+                ON ta.user_id = u.id
+
+             WHERE ta.task_id = $1`,
+            [id]
+        );
+
+
+        // 12. Final task object
+        const updatedTask = {
+            ...updatedTaskResult.rows[0],
+
+            todoChecklist: todosResult.rows,
+
+            assignedTo: assignedUsersResult.rows
+        };
+
+
+        // 13. Response
+        res.status(200).json({
+            message: "Task checklist updated",
+            task: updatedTask
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDashboardData=async(req,res,next)=>{
+ try {
+
+        // 1. Total tasks
+        const totalTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks`
+        );
+
+        const totalTasks = Number(totalTasksResult.rows[0].count);
+
+
+        // 2. Pending tasks
+        const pendingTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks
+             WHERE status = $1`,
+            ["Pending"]
+        );
+
+        const pendingTasks = Number(
+            pendingTasksResult.rows[0].count
+        );
+
+
+        // 3. Completed tasks
+        const completedTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks
+             WHERE status = $1`,
+            ["Completed"]
+        );
+
+        const completedTasks = Number(
+            completedTasksResult.rows[0].count
+        );
+
+
+        // 4. Overdue tasks
+        const overdueTasksResult = await pool.query(
+            `SELECT COUNT(*) AS count
+             FROM tasks
+             WHERE status != $1
+             AND duedate < CURRENT_TIMESTAMP`,
+            ["Completed"]
+        );
+
+        const overdueTasks = Number(
+            overdueTasksResult.rows[0].count
+        );
+
+
+        // 5. Task distribution by status
+        const taskDistributionResult = await pool.query(
+            `SELECT
+                status,
+                COUNT(*) AS count
+             FROM tasks
+             GROUP BY status`
+        );
+
+
+        const taskDistribution = {
+            Pending: 0,
+            "InProgress": 0,
+            Completed: 0,
+            All: totalTasks
+        };
+
+
+        taskDistributionResult.rows.forEach((item) => {
+
+            const key = item.status.replace(/\s+/g, "");
+
+            taskDistribution[key] = Number(item.count);
+
+        });
+
+
+        // 6. Task distribution by priority
+        const taskPriorityResult = await pool.query(
+            `SELECT
+                priority,
+                COUNT(*) AS count
+             FROM tasks
+             GROUP BY priority`
+        );
+
+
+        const taskPriorityLevel = {
+            Low: 0,
+            Medium: 0,
+            High: 0
+        };
+
+
+        taskPriorityResult.rows.forEach((item) => {
+
+            taskPriorityLevel[item.priority] = Number(item.count);
+
+        });
+
+
+        // 7. Recent 10 tasks
+        const recentTasksResult = await pool.query(
+            `SELECT
+                id,
+                title,
+                status,
+                priority,
+                duedate,
+                created_at
+             FROM tasks
+             ORDER BY created_at DESC
+             LIMIT 10`
+        );
+
+
+        const recentTasks = recentTasksResult.rows;
+
+
+        // 8. Response
+        res.status(200).json({
+
+            statistics: {
+                totalTasks,
+                pendingTasks,
+                completedTasks,
+                overdueTasks
+            },
+
+            charts: {
+                taskDistribution,
+                taskPriorityLevel
+            },
+
+            recentTasks
+
+        });
+
+    } catch (error) {
+        next(error);
+    }
+
+};
